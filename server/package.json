@@ -1,0 +1,17 @@
+{
+  "name": "bfhl-hierarchy-api",
+  "version": "1.0.0",
+  "description": "REST API for processing hierarchical node relationships and tree analysis",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

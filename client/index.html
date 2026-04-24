@@ -1,0 +1,1293 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BFHL Hierarchy Analyzer — Tree &amp; Cycle Visualizer</title>
+  <meta name="description" content="Analyze hierarchical node relationships, detect cycles, and visualize trees with an interactive REST API frontend." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    /* ──────────────── THEME TOKENS ──────────────── */
+    :root,
+    [data-theme="dark"] {
+      --bg: #0d0d0d;
+      --surface: #1a1a1a;
+      --accent: #00ff99;
+      --text: #e0e0e0;
+      --error: #ff4d4d;
+      --border: #2a2a2a;
+      --chip-invalid: #ff4d4d;
+      --chip-duplicate: #ff9900;
+      --accent-dim: rgba(0, 255, 153, 0.12);
+      --surface-hover: #222222;
+      --glow: 0 0 20px rgba(0, 255, 153, 0.15);
+    }
+
+    [data-theme="light"] {
+      --bg: #f4f4f0;
+      --surface: #ffffff;
+      --accent: #007a4d;
+      --text: #1a1a1a;
+      --error: #cc0000;
+      --border: #dddddd;
+      --chip-invalid: #cc0000;
+      --chip-duplicate: #cc6600;
+      --accent-dim: rgba(0, 122, 77, 0.08);
+      --surface-hover: #f0f0ec;
+      --glow: 0 0 20px rgba(0, 122, 77, 0.08);
+    }
+
+    /* ──────────────── RESET & BASE ──────────────── */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    /* ──────────────── LAYOUT ──────────────── */
+    .app-shell {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 24px 20px 60px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 28px;
+      transition: border-color 0.3s;
+    }
+
+    .logo-group h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: -0.5px;
+      transition: color 0.3s;
+    }
+
+    .logo-group .subtitle {
+      font-size: 0.72rem;
+      color: var(--text);
+      opacity: 0.55;
+    }
+
+    .edge-badge {
+      display: inline-block;
+      margin-top: 4px;
+      font-size: 0.7rem;
+      background: var(--accent-dim);
+      color: var(--accent);
+      padding: 2px 10px;
+      border-radius: 20px;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    /* ──────────────── THEME TOGGLE ──────────────── */
+    .theme-toggle {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.78rem;
+      padding: 6px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.3s, color 0.3s, border-color 0.3s;
+    }
+
+    .theme-toggle:hover {
+      background: var(--surface-hover);
+    }
+
+    /* ──────────────── SECTION CARD ──────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      transition: background 0.3s, border-color 0.3s;
+      box-shadow: var(--glow);
+    }
+
+    .card-title {
+      font-size: 0.82rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--accent);
+      margin-bottom: 14px;
+      transition: color 0.3s;
+    }
+
+    /* ──────────────── TEXTAREA EDITOR ──────────────── */
+    .editor-wrap {
+      position: relative;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .editor-backdrop {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      padding: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      line-height: 1.6;
+      overflow: hidden;
+      pointer-events: none;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      color: transparent;
+    }
+
+    .editor-backdrop .line-invalid {
+      border-left: 3px solid var(--chip-invalid);
+      padding-left: 6px;
+      margin-left: -9px;
+      background: rgba(255, 77, 77, 0.06);
+      transition: border-color 0.3s;
+    }
+
+    .editor-backdrop .line-ok {
+      padding-left: 9px;
+      margin-left: -9px;
+    }
+
+    #edgeInput {
+      width: 100%;
+      min-height: 180px;
+      resize: vertical;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      line-height: 1.6;
+      padding: 12px;
+      position: relative;
+      z-index: 1;
+      transition: border-color 0.3s, color 0.3s;
+    }
+
+    #edgeInput:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    /* ──────────────── COUNTERS / HINTS ──────────────── */
+    .input-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 8px;
+      font-size: 0.72rem;
+      opacity: 0.7;
+    }
+
+    .live-stats {
+      display: flex;
+      gap: 14px;
+    }
+
+    .live-valid {
+      color: var(--accent);
+      transition: color 0.3s;
+    }
+
+    .live-invalid {
+      color: var(--error);
+      transition: color 0.3s;
+    }
+
+    /* ──────────────── BUTTONS ──────────────── */
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .btn {
+      font-family: inherit;
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 8px 18px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.3s, color 0.3s, border-color 0.3s, transform 0.12s;
+    }
+
+    .btn:active {
+      transform: scale(0.97);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #0d0d0d;
+      border-color: var(--accent);
+    }
+
+    .btn-primary:hover {
+      filter: brightness(1.15);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      filter: none;
+    }
+
+    .btn-secondary {
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    .btn-secondary:hover {
+      background: var(--surface-hover);
+    }
+
+    .hint-text {
+      font-size: 0.65rem;
+      margin-top: 6px;
+      opacity: 0.4;
+    }
+
+    /* ──────────────── SKELETON SHIMMER ──────────────── */
+    .skeleton-wrap {
+      display: none;
+    }
+
+    .skeleton-wrap.visible {
+      display: block;
+    }
+
+    .skeleton-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .skel {
+      background: linear-gradient(90deg, var(--surface) 25%, var(--border) 50%, var(--surface) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s ease-in-out infinite;
+      border-radius: 8px;
+    }
+
+    .skel-card {
+      flex: 1;
+      height: 82px;
+    }
+
+    .skel-block {
+      width: 100%;
+      height: 160px;
+    }
+
+    @keyframes shimmer {
+      0%   { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* ──────────────── STATS CARDS ──────────────── */
+    .stats-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .stat-card {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+      transition: background 0.3s, border-color 0.3s, transform 0.2s;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--accent);
+    }
+
+    .stat-icon {
+      font-size: 1.6rem;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .stat-value {
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: var(--accent);
+      transition: color 0.3s;
+    }
+
+    .stat-label {
+      font-size: 0.68rem;
+      opacity: 0.6;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-top: 2px;
+    }
+
+    /* ──────────────── CHIP TAGS ──────────────── */
+    .chip-section {
+      margin-bottom: 16px;
+    }
+
+    .chip-section-title {
+      font-size: 0.72rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+      opacity: 0.7;
+    }
+
+    .chip-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .chip {
+      font-family: inherit;
+      font-size: 0.72rem;
+      font-weight: 500;
+      padding: 3px 12px;
+      border-radius: 20px;
+      border: none;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    .chip-invalid {
+      background: rgba(255, 77, 77, 0.15);
+      color: var(--chip-invalid);
+    }
+
+    .chip-duplicate {
+      background: rgba(255, 153, 0, 0.15);
+      color: var(--chip-duplicate);
+    }
+
+    /* ──────────────── VIEW TOGGLE ──────────────── */
+    .view-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .view-tabs {
+      display: flex;
+      gap: 0;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      transition: border-color 0.3s;
+    }
+
+    .view-tab {
+      font-family: inherit;
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 6px 16px;
+      border: none;
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    .view-tab.active {
+      background: var(--accent);
+      color: #0d0d0d;
+    }
+
+    .action-btns {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-small {
+      font-family: inherit;
+      font-size: 0.68rem;
+      font-weight: 500;
+      padding: 5px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      transition: background 0.3s, color 0.3s, border-color 0.3s;
+    }
+
+    .btn-small:hover {
+      border-color: var(--accent);
+    }
+
+    /* ──────────────── TREE / JSON DISPLAY ──────────────── */
+    .result-pane {
+      margin-bottom: 16px;
+    }
+
+    .tree-block {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 10px;
+      overflow-x: auto;
+      transition: background 0.3s, border-color 0.3s;
+    }
+
+    .tree-block pre {
+      margin: 0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      line-height: 1.55;
+      white-space: pre;
+    }
+
+    .tree-root-label {
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: color 0.3s;
+    }
+
+    .tree-root-label .depth-badge {
+      font-size: 0.62rem;
+      font-weight: 400;
+      background: var(--accent-dim);
+      color: var(--accent);
+      padding: 1px 8px;
+      border-radius: 12px;
+    }
+
+    .cycle-badge {
+      font-size: 0.62rem;
+      background: rgba(255, 77, 77, 0.15);
+      color: var(--error);
+      padding: 1px 8px;
+      border-radius: 12px;
+    }
+
+    /* JSON syntax colors */
+    .json-key { color: var(--accent); }
+    .json-string { color: #f0a500; }
+    .json-number { color: #c792ea; }
+    .json-bool { color: #c792ea; }
+
+    .json-view pre {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+      line-height: 1.5;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      overflow-x: auto;
+      transition: background 0.3s, border-color 0.3s;
+    }
+
+    /* ──────────────── HISTORY PANEL ──────────────── */
+    .history-panel {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      transition: border-color 0.3s;
+    }
+
+    .history-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: var(--surface);
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-weight: 600;
+      user-select: none;
+      transition: background 0.3s;
+    }
+
+    .history-header:hover {
+      background: var(--surface-hover);
+    }
+
+    .history-chevron {
+      transition: transform 0.25s;
+      font-size: 0.7rem;
+    }
+
+    .history-panel.open .history-chevron {
+      transform: rotate(180deg);
+    }
+
+    .history-body {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.35s ease;
+    }
+
+    .history-panel.open .history-body {
+      max-height: 600px;
+    }
+
+    .history-list {
+      padding: 4px 0;
+    }
+
+    .history-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 16px;
+      font-size: 0.72rem;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.2s, border-color 0.3s;
+    }
+
+    .history-row:last-child {
+      border-bottom: none;
+    }
+
+    .history-row:hover {
+      background: var(--accent-dim);
+    }
+
+    .history-row .ts {
+      opacity: 0.5;
+      min-width: 130px;
+    }
+
+    .history-row .edges-count {
+      opacity: 0.7;
+    }
+
+    .history-row .deep-root {
+      color: var(--accent);
+      font-weight: 600;
+      transition: color 0.3s;
+    }
+
+    .history-actions {
+      padding: 8px 16px 12px;
+    }
+
+    /* ──────────────── EMPTY STATE ──────────────── */
+    .empty-history {
+      padding: 16px;
+      text-align: center;
+      font-size: 0.72rem;
+      opacity: 0.4;
+    }
+
+    /* ──────────────── RESPONSIVE ──────────────── */
+    @media (max-width: 640px) {
+      .stats-row {
+        flex-direction: column;
+      }
+      .view-bar {
+        flex-direction: column;
+        gap: 10px;
+        align-items: flex-start;
+      }
+      .btn-row {
+        flex-direction: column;
+      }
+      .btn {
+        width: 100%;
+        text-align: center;
+      }
+    }
+
+    /* ──────────────── ANIMATIONS ──────────────── */
+    .fade-in {
+      animation: fadeUp 0.4s ease forwards;
+    }
+
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(12px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+
+    <!-- ────── HEADER ────── -->
+    <header>
+      <div class="logo-group">
+        <h1>BFHL Hierarchy Analyzer</h1>
+        <div class="subtitle">Tree & Cycle Detection Engine</div>
+        <div class="edge-badge" id="edgeBadge">Edges processed: 0</div>
+      </div>
+      <button class="theme-toggle" id="themeBtn" aria-label="Toggle theme">🌙 Dark</button>
+    </header>
+
+    <!-- ────── INPUT SECTION ────── -->
+    <div class="card">
+      <div class="card-title">Edge Input</div>
+      <div class="editor-wrap">
+        <div class="editor-backdrop" id="editorBackdrop"></div>
+        <textarea id="edgeInput" placeholder="Enter one edge per line, e.g. A->B" spellcheck="false"></textarea>
+      </div>
+      <div class="input-meta">
+        <div class="live-stats">
+          <span class="live-valid" id="validCount">✓ 0 valid</span>
+          <span class="live-invalid" id="invalidCount">✗ 0 invalid</span>
+        </div>
+        <span id="edgeCounter">0 edges entered</span>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="submitBtn">Submit</button>
+        <button class="btn btn-secondary" id="loadExampleBtn">Load Example</button>
+        <button class="btn btn-secondary" id="clearBtn">Clear</button>
+      </div>
+      <div class="hint-text">Ctrl+Enter to submit</div>
+    </div>
+
+    <!-- ────── SKELETON LOADER ────── -->
+    <div class="skeleton-wrap" id="skeleton">
+      <div class="skeleton-row">
+        <div class="skel skel-card"></div>
+        <div class="skel skel-card"></div>
+        <div class="skel skel-card"></div>
+      </div>
+      <div class="skel skel-block"></div>
+    </div>
+
+    <!-- ────── RESULTS SECTION ────── -->
+    <div id="resultsSection" class="hidden">
+
+      <!-- stats cards -->
+      <div class="stats-row fade-in" id="statsRow">
+        <div class="stat-card">
+          <span class="stat-icon">🌳</span>
+          <div class="stat-value" id="totalTrees">0</div>
+          <div class="stat-label">Total Trees</div>
+        </div>
+        <div class="stat-card">
+          <span class="stat-icon">🔄</span>
+          <div class="stat-value" id="totalCycles">0</div>
+          <div class="stat-label">Total Cycles</div>
+        </div>
+        <div class="stat-card">
+          <span class="stat-icon">📏</span>
+          <div class="stat-value" id="deepestRoot">—</div>
+          <div class="stat-label">Deepest Tree</div>
+        </div>
+      </div>
+
+      <!-- chips -->
+      <div id="chipsArea"></div>
+
+      <!-- view toggle + action buttons -->
+      <div class="view-bar">
+        <div class="view-tabs">
+          <button class="view-tab active" id="tabAscii" data-view="ascii">ASCII</button>
+          <button class="view-tab" id="tabJson" data-view="json">JSON</button>
+        </div>
+        <div class="action-btns">
+          <button class="btn-small" id="copyBtn">Copy Response</button>
+          <button class="btn-small" id="exportBtn">Export JSON</button>
+        </div>
+      </div>
+
+      <!-- output pane -->
+      <div class="result-pane" id="resultPane"></div>
+    </div>
+
+    <!-- ────── HISTORY PANEL ────── -->
+    <div class="history-panel" id="historyPanel">
+      <div class="history-header" id="historyHeader">
+        <span id="historyTitle">📋 History (0)</span>
+        <span class="history-chevron">▼</span>
+      </div>
+      <div class="history-body">
+        <div class="history-list" id="historyList"></div>
+        <div class="history-actions">
+          <button class="btn-small" id="clearHistoryBtn">Clear History</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    /* ===========================================================
+       BFHL Frontend — Vanilla JS, no frameworks, no async/await
+       =========================================================== */
+
+    // ── CONSTANTS ──
+    var API_BASE = 'http://localhost:3001';
+    var STORAGE_KEY_THEME = 'theme';
+    var STORAGE_KEY_HISTORY = 'bfhl_history';
+    var MAX_HISTORY = 5;
+    var NODE_PATTERN = /^([A-Z])->([A-Z])$/;
+
+    var EXAMPLE_INPUT = [
+      'A->B', 'A->C', 'B->D', 'C->E', 'E->F',
+      'X->Y', 'Y->Z', 'Z->X',
+      'P->Q', 'Q->R',
+      'G->H', 'G->H', 'G->I',
+      'hello', '1->2', 'A->'
+    ].join('\n');
+
+    // ── MUTABLE STATE ──
+    var currentResponse = null;
+    var cumulativeEdges = 0;
+    var activeView = 'ascii';
+
+    // ── DOM REFS ──
+    var dom = {
+      themeBtn:       document.getElementById('themeBtn'),
+      edgeInput:      document.getElementById('edgeInput'),
+      editorBackdrop: document.getElementById('editorBackdrop'),
+      validCount:     document.getElementById('validCount'),
+      invalidCount:   document.getElementById('invalidCount'),
+      edgeCounter:    document.getElementById('edgeCounter'),
+      submitBtn:      document.getElementById('submitBtn'),
+      loadExampleBtn: document.getElementById('loadExampleBtn'),
+      clearBtn:       document.getElementById('clearBtn'),
+      skeleton:       document.getElementById('skeleton'),
+      resultsSection: document.getElementById('resultsSection'),
+      totalTrees:     document.getElementById('totalTrees'),
+      totalCycles:    document.getElementById('totalCycles'),
+      deepestRoot:    document.getElementById('deepestRoot'),
+      chipsArea:      document.getElementById('chipsArea'),
+      tabAscii:       document.getElementById('tabAscii'),
+      tabJson:        document.getElementById('tabJson'),
+      copyBtn:        document.getElementById('copyBtn'),
+      exportBtn:      document.getElementById('exportBtn'),
+      resultPane:     document.getElementById('resultPane'),
+      historyPanel:   document.getElementById('historyPanel'),
+      historyHeader:  document.getElementById('historyHeader'),
+      historyTitle:   document.getElementById('historyTitle'),
+      historyList:    document.getElementById('historyList'),
+      clearHistoryBtn:document.getElementById('clearHistoryBtn'),
+      edgeBadge:      document.getElementById('edgeBadge')
+    };
+
+
+    // === THEME ===
+
+    /**
+     * Applies the given theme and persists the preference.
+     */
+    function setTheme(themeName) {
+      document.documentElement.setAttribute('data-theme', themeName);
+      localStorage.setItem(STORAGE_KEY_THEME, themeName);
+      dom.themeBtn.textContent = themeName === 'dark' ? '☀ Light' : '🌙 Dark';
+    }
+
+    function initTheme() {
+      var saved = localStorage.getItem(STORAGE_KEY_THEME);
+      // default to dark when nothing is stored
+      setTheme(saved === 'light' ? 'light' : 'dark');
+    }
+
+    dom.themeBtn.addEventListener('click', function () {
+      var current = document.documentElement.getAttribute('data-theme');
+      setTheme(current === 'dark' ? 'light' : 'dark');
+    });
+
+
+    // === INPUT HANDLING ===
+
+    /**
+     * Parses the textarea content into a clean array of non-empty trimmed lines.
+     */
+    function parseInputLines() {
+      var raw = dom.edgeInput.value.split('\n');
+      var result = [];
+      for (var i = 0; i < raw.length; i++) {
+        var trimmed = raw[i].trim();
+        if (trimmed.length > 0) {
+          result.push(trimmed);
+        }
+      }
+      return result;
+    }
+
+    function updateEdgeCounter() {
+      var lines = parseInputLines();
+      dom.edgeCounter.textContent = lines.length + ' edge' + (lines.length !== 1 ? 's' : '') + ' entered';
+    }
+
+    dom.loadExampleBtn.addEventListener('click', function () {
+      dom.edgeInput.value = EXAMPLE_INPUT;
+      liveValidate();
+      updateEdgeCounter();
+    });
+
+    dom.clearBtn.addEventListener('click', function () {
+      dom.edgeInput.value = '';
+      currentResponse = null;
+      dom.resultsSection.classList.add('hidden');
+      dom.skeleton.classList.remove('visible');
+      dom.editorBackdrop.innerHTML = '';
+      dom.validCount.textContent = '✓ 0 valid';
+      dom.invalidCount.textContent = '✗ 0 invalid';
+      updateEdgeCounter();
+    });
+
+    // keyboard shortcut: Ctrl+Enter or Cmd+Enter submits
+    dom.edgeInput.addEventListener('keydown', function (evt) {
+      if ((evt.ctrlKey || evt.metaKey) && evt.key === 'Enter') {
+        evt.preventDefault();
+        dom.submitBtn.click();
+      }
+    });
+
+    dom.edgeInput.addEventListener('input', function () {
+      liveValidate();
+      updateEdgeCounter();
+    });
+
+    // keep backdrop scroll in sync with textarea
+    dom.edgeInput.addEventListener('scroll', function () {
+      dom.editorBackdrop.scrollTop = dom.edgeInput.scrollTop;
+    });
+
+
+    // === LIVE VALIDATOR ===
+
+    /**
+     * Checks each line in the textarea and updates the backdrop highlights
+     * plus the valid/invalid counters underneath.
+     */
+    function liveValidate() {
+      var rawLines = dom.edgeInput.value.split('\n');
+      var validNum = 0;
+      var invalidNum = 0;
+      var backdropHtml = '';
+
+      for (var i = 0; i < rawLines.length; i++) {
+        var line = rawLines[i];
+        var trimmed = line.trim();
+        var cssClass = 'line-ok';
+
+        if (trimmed.length > 0) {
+          var match = trimmed.match(NODE_PATTERN);
+          var isGood = (match !== null && match[1] !== match[2]);
+          if (isGood) {
+            validNum += 1;
+          } else {
+            invalidNum += 1;
+            cssClass = 'line-invalid';
+          }
+        }
+
+        // use the raw line (preserving spaces) so it aligns perfectly with the textarea
+        backdropHtml += '<div class="' + cssClass + '">' + escapeForHtml(line || ' ') + '</div>';
+      }
+
+      dom.editorBackdrop.innerHTML = backdropHtml;
+      dom.validCount.textContent = '✓ ' + validNum + ' valid';
+      dom.invalidCount.textContent = '✗ ' + invalidNum + ' invalid';
+    }
+
+    /**
+     * Minimal HTML escaping so user input can't break the backdrop markup.
+     */
+    function escapeForHtml(str) {
+      return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+
+    // === API ===
+
+    dom.submitBtn.addEventListener('click', function () {
+      var lines = parseInputLines();
+      if (lines.length === 0) {
+        return;
+      }
+      submitToApi(lines);
+    });
+
+    /**
+     * Sends the edge array to the backend. Uses .then()/.catch() only.
+     */
+    function submitToApi(edgeArray) {
+      dom.submitBtn.disabled = true;
+      dom.submitBtn.textContent = 'Processing...';
+      dom.resultsSection.classList.add('hidden');
+      dom.skeleton.classList.add('visible');
+
+      fetch(API_BASE + '/bfhl', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: edgeArray })
+      })
+      .then(function (resp) {
+        if (!resp.ok) {
+          return resp.json().then(function (err) {
+            throw new Error(err.error || 'Server returned ' + resp.status);
+          });
+        }
+        return resp.json();
+      })
+      .then(function (data) {
+        currentResponse = data;
+        cumulativeEdges += edgeArray.length;
+        dom.edgeBadge.textContent = 'Edges processed: ' + cumulativeEdges;
+
+        renderResults(data);
+        saveToHistory(edgeArray, data);
+      })
+      .catch(function (err) {
+        dom.resultPane.innerHTML = '<div class="tree-block"><pre style="color:var(--error)">Error: ' + escapeForHtml(err.message) + '</pre></div>';
+        dom.resultsSection.classList.remove('hidden');
+      })
+      .then(function () {
+        // always reset button state (runs regardless of success/fail via chained .then)
+        dom.submitBtn.disabled = false;
+        dom.submitBtn.textContent = 'Submit';
+        dom.skeleton.classList.remove('visible');
+      });
+    }
+
+
+    // === RENDER ===
+
+    /**
+     * Master render function — populates stats, chips, and the selected view.
+     */
+    function renderResults(data) {
+      dom.resultsSection.classList.remove('hidden');
+
+      // stats cards
+      dom.totalTrees.textContent = data.summary.total_trees;
+      dom.totalCycles.textContent = data.summary.total_cycles;
+      dom.deepestRoot.textContent = data.summary.largest_tree_root || '—';
+
+      // chips
+      renderChips(data);
+
+      // tree / json view
+      if (activeView === 'ascii') {
+        renderAsciiView(data);
+      } else {
+        renderJsonView(data);
+      }
+    }
+
+    function renderChips(data) {
+      var html = '';
+
+      if (data.invalid_entries && data.invalid_entries.length > 0) {
+        html += '<div class="chip-section"><div class="chip-section-title">Invalid Entries</div><div class="chip-list">';
+        for (var i = 0; i < data.invalid_entries.length; i++) {
+          html += '<span class="chip chip-invalid">' + escapeForHtml(String(data.invalid_entries[i])) + '</span>';
+        }
+        html += '</div></div>';
+      }
+
+      if (data.duplicate_edges && data.duplicate_edges.length > 0) {
+        html += '<div class="chip-section"><div class="chip-section-title">Duplicate Edges</div><div class="chip-list">';
+        for (var j = 0; j < data.duplicate_edges.length; j++) {
+          html += '<span class="chip chip-duplicate">' + escapeForHtml(data.duplicate_edges[j]) + '</span>';
+        }
+        html += '</div></div>';
+      }
+
+      dom.chipsArea.innerHTML = html;
+    }
+
+    /**
+     * Renders each hierarchy as an ASCII art tree inside a labeled block.
+     */
+    function renderAsciiView(data) {
+      var output = '';
+      var hierarchies = data.hierarchies || [];
+
+      for (var h = 0; h < hierarchies.length; h++) {
+        var hier = hierarchies[h];
+        var labelHtml = '<div class="tree-root-label">Root: ' + escapeForHtml(hier.root);
+
+        if (hier.has_cycle === true) {
+          labelHtml += ' <span class="cycle-badge">⚠ Cycle</span>';
+        } else if (hier.depth !== undefined) {
+          labelHtml += ' <span class="depth-badge">depth ' + hier.depth + '</span>';
+        }
+        labelHtml += '</div>';
+
+        var asciiContent = '';
+        if (hier.has_cycle === true) {
+          asciiContent = '⚠ CYCLE DETECTED\n└── root: ' + hier.root;
+        } else {
+          asciiContent = buildAsciiFromObj(hier.tree);
+        }
+
+        output += '<div class="tree-block fade-in">' + labelHtml + '<pre>' + escapeForHtml(asciiContent) + '</pre></div>';
+      }
+
+      dom.resultPane.innerHTML = output;
+    }
+
+    /**
+     * Converts a nested tree object into ASCII art using box-drawing chars.
+     * For example: { A: { B: { D: {} }, C: {} } } becomes:
+     *   A
+     *   ├── B
+     *   │   └── D
+     *   └── C
+     */
+    function buildAsciiFromObj(treeObj) {
+      var keys = Object.keys(treeObj);
+      if (keys.length === 0) {
+        return '(empty)';
+      }
+
+      var rootKey = keys[0];
+      var lines = [rootKey];
+      appendChildrenAscii(treeObj[rootKey], '', lines);
+      return lines.join('\n');
+    }
+
+    function appendChildrenAscii(nodeObj, prefix, lines) {
+      var childKeys = Object.keys(nodeObj);
+
+      for (var c = 0; c < childKeys.length; c++) {
+        var isLast = (c === childKeys.length - 1);
+        var connector = isLast ? '└── ' : '├── ';
+        var nextPrefix = isLast ? '    ' : '│   ';
+
+        lines.push(prefix + connector + childKeys[c]);
+        appendChildrenAscii(nodeObj[childKeys[c]], prefix + nextPrefix, lines);
+      }
+    }
+
+    /**
+     * Renders the full JSON response with manual syntax highlighting.
+     */
+    function renderJsonView(data) {
+      var raw = JSON.stringify(data, null, 2);
+      var highlighted = applySyntaxColors(raw);
+      dom.resultPane.innerHTML = '<div class="json-view"><pre>' + highlighted + '</pre></div>';
+    }
+
+    /**
+     * Applies <span> color classes to JSON text via regex for keys, strings, numbers, bools.
+     */
+    function applySyntaxColors(jsonText) {
+      var safe = jsonText
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+      // highlight keys (quoted strings followed by a colon)
+      safe = safe.replace(/(&quot;|")([^"]+?)(&quot;|")(\s*:)/g, function (m, q1, key, q2, colon) {
+        return '<span class="json-key">"' + key + '"</span>' + colon;
+      });
+
+      // since we escaped quotes to &quot; or they stayed as ", let's fix approach:
+      // re-do on original, safer method
+      var result = '';
+      var idx = 0;
+      var len = safe.length;
+
+      // simply apply color spans via a second pass for remaining string/number/bool values
+      // the key pass above handles keys; now handle values
+      result = safe.replace(/(:\s*)("([^"]*?)")/g, function (m, prefix, full, val) {
+        return prefix + '<span class="json-string">"' + val + '"</span>';
+      });
+
+      result = result.replace(/(:\s*)(\d+)/g, function (m, prefix, num) {
+        return prefix + '<span class="json-number">' + num + '</span>';
+      });
+
+      result = result.replace(/(:\s*)(true|false)/g, function (m, prefix, bool) {
+        return prefix + '<span class="json-bool">' + bool + '</span>';
+      });
+
+      return result;
+    }
+
+    // view tab switching
+    dom.tabAscii.addEventListener('click', function () {
+      activeView = 'ascii';
+      dom.tabAscii.classList.add('active');
+      dom.tabJson.classList.remove('active');
+      if (currentResponse) {
+        renderAsciiView(currentResponse);
+      }
+    });
+
+    dom.tabJson.addEventListener('click', function () {
+      activeView = 'json';
+      dom.tabJson.classList.add('active');
+      dom.tabAscii.classList.remove('active');
+      if (currentResponse) {
+        renderJsonView(currentResponse);
+      }
+    });
+
+    // copy response
+    dom.copyBtn.addEventListener('click', function () {
+      if (!currentResponse) return;
+
+      var text = JSON.stringify(currentResponse, null, 2);
+      navigator.clipboard.writeText(text).then(function () {
+        var original = dom.copyBtn.textContent;
+        dom.copyBtn.textContent = '✓ Copied!';
+        setTimeout(function () {
+          dom.copyBtn.textContent = original;
+        }, 2000);
+      });
+    });
+
+    // export JSON
+    dom.exportBtn.addEventListener('click', function () {
+      if (!currentResponse) return;
+
+      var jsonStr = JSON.stringify(currentResponse, null, 2);
+      var blob = new Blob([jsonStr], { type: 'application/json' });
+      var url = URL.createObjectURL(blob);
+      var stamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+      var anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = 'response_' + stamp + '.json';
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+    });
+
+
+    // === HISTORY ===
+
+    function loadHistory() {
+      var raw = localStorage.getItem(STORAGE_KEY_HISTORY);
+      if (!raw) return [];
+      try {
+        return JSON.parse(raw);
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function persistHistory(history) {
+      localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(history));
+    }
+
+    function saveToHistory(inputArray, response) {
+      var history = loadHistory();
+      history.unshift({
+        timestamp: new Date().toLocaleString(),
+        inputArray: inputArray,
+        response: response
+      });
+      // keep only the latest N entries
+      if (history.length > MAX_HISTORY) {
+        history = history.slice(0, MAX_HISTORY);
+      }
+      persistHistory(history);
+      renderHistoryPanel();
+    }
+
+    function renderHistoryPanel() {
+      var history = loadHistory();
+      dom.historyTitle.textContent = '📋 History (' + history.length + ')';
+
+      if (history.length === 0) {
+        dom.historyList.innerHTML = '<div class="empty-history">No history yet</div>';
+        return;
+      }
+
+      var html = '';
+      for (var i = 0; i < history.length; i++) {
+        var entry = history[i];
+        var rootLabel = (entry.response && entry.response.summary)
+          ? entry.response.summary.largest_tree_root || '—'
+          : '—';
+
+        html += '<div class="history-row" data-index="' + i + '">';
+        html += '<span class="ts">' + escapeForHtml(entry.timestamp) + '</span>';
+        html += '<span class="edges-count">' + entry.inputArray.length + ' edges</span>';
+        html += '<span class="deep-root">' + escapeForHtml(rootLabel) + '</span>';
+        html += '</div>';
+      }
+
+      dom.historyList.innerHTML = html;
+
+      // attach click handlers to each row
+      var rows = dom.historyList.querySelectorAll('.history-row');
+      for (var r = 0; r < rows.length; r++) {
+        rows[r].addEventListener('click', function () {
+          var idx = parseInt(this.getAttribute('data-index'), 10);
+          var picked = loadHistory()[idx];
+          if (!picked) return;
+
+          dom.edgeInput.value = picked.inputArray.join('\n');
+          liveValidate();
+          updateEdgeCounter();
+
+          currentResponse = picked.response;
+          renderResults(picked.response);
+        });
+      }
+    }
+
+    dom.historyHeader.addEventListener('click', function () {
+      dom.historyPanel.classList.toggle('open');
+    });
+
+    dom.clearHistoryBtn.addEventListener('click', function () {
+      localStorage.removeItem(STORAGE_KEY_HISTORY);
+      renderHistoryPanel();
+    });
+
+
+    // === INIT ===
+
+    initTheme();
+    updateEdgeCounter();
+    renderHistoryPanel();
+
+  </script>
+</body>
+</html>
