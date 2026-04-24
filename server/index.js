@@ -10,9 +10,9 @@ var cycleDetector = require('./cycleDetector');
 var summarizer = require('./summarizer');
 
 // ── identity constants (update these with your real details) ──
-var USER_ID = 'pari_gupta_01012004';
-var EMAIL_ID = 'pg5765@srmist.edu.in';
-var COLLEGE_ROLL = 'RA2111003010765';
+var USER_ID = 'parigupta_04052003';
+var EMAIL_ID = 'pg4347@srmist.edu.in';
+var COLLEGE_ROLL = 'RA2311027010173';
 
 var PORT = process.env.PORT || 3000;
 
