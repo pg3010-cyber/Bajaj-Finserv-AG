@@ -98,8 +98,11 @@ app.post('/bfhl', function (req, res) {
   return res.json(response);
 });
 
-app.listen(PORT, function () {
-  console.log('BFHL API listening on port ' + PORT);
-});
+// only bind to a port when running locally — Vercel handles this itself
+if (!process.env.VERCEL) {
+  app.listen(PORT, function () {
+    console.log('BFHL API listening on port ' + PORT);
+  });
+}
 
 module.exports = app;
